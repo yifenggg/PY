@@ -1,0 +1,130 @@
+
+import requests
+from bs4 import BeautifulSoup
+import re
+import time 
+from email.header import Header
+from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
+from email.mime.multipart import MIMEMultipart
+import smtplib
+
+def get_information(to_addr_list, user_loc_preference):
+    informations = {}
+    maincontents = {}
+    
+    todate = time.strftime("%Y-%m-%d")
+    for to_addr in to_addr_list:
+        informations[to_addr] = "{}\n".format("秋招：")
+    r = requests.get('http://www.yingjiesheng.com/2019/')
+    r.encoding = 'gbk'
+    
+    soup = BeautifulSoup(r.content, 'html.parser')
+    
+    lists = soup.find_all(class_ = 'comp_bg comp_1')
+    # enter stoppoint file path
+    f = open(' ', 'r')
+    stoppoint = f.readline()
+    f.close()
+    
+    for line in lists:
+        z = line.find(class_ = 's_clear tit floatl').find('a')
+        locacomp = z.get_text()
+        if locacomp == stoppoint:
+            break;
+        website = z['href'] 
+        x = line.find(class_ = 's_clear status').find('a')
+        period = x.get_text()
+        
+        location = re.split(r'\W', locacomp)[1]
+        for to_addr in to_addr_list: 
+            locmatching = re.search(user_loc_preference[to_addr], location)
+            if locmatching != None:
+                company = re.split(r'\W', locacomp)[2].split('201')[0]
+                period = re.search(r'\d.+', period)[0]
+                hrefmatch = re.match(r'/job.*.html',website)
+                if hrefmatch != None:
+                    website = 'http://www.yingjiesheng.com' + website
+                lineinfor = "[{}]{}    {}\n    {}\n".format(location[locmatching.span()[0]:locmatching.span()[1]],company,period,website)
+                informations[to_addr] += lineinfor
+        
+    for index in informations:
+        if informations[index][-2:] == '：\n':
+            informations[index] += 'NONE'
+
+    for index in informations:           
+        maincontents[index] = "{}\n\n{}\n\n{}\n\n{}\n{}".format("Dear User,","Following are the campus recruitment information for today:",informations[index],"Best Wishes,", "Auto-Yifeng")      
+    
+    output = [maincontents, todate]
+    
+    for line in lists:
+        z = line.find(class_ = 's_clear tit floatl').find('a')
+        locacomp = z.get_text()
+        location = re.split(r'\W', locacomp)[1]
+        if location != '置顶':
+            stoppoint = locacomp
+            break;
+    # enter stoppoint file path
+    f1 = open(' ','w')
+    f1.write(stoppoint)
+    f1.close()   
+    return output
+
+def send_mail(from_addr, to_addr):
+    if '@gmail' in from_addr:
+        mail_gmail(from_addr, to_addr)
+    else:
+        return 'Not support this email'
+
+
+def mail_gmail(from_addr, to_addr):
+	# enter password
+    password = ''
+    smtp_server = 'smtp.gmail.com'
+    smtp_port = 587
+
+    server = smtplib.SMTP(smtp_server, smtp_port)
+    server.starttls()
+    server.set_debuglevel(1)
+    server.login(from_addr, password)
+        
+    output = get_information(to_addr_list, user_loc_preference)
+    for to_addr in to_addr_list: 
+        msg = MIMEMultipart('related') 
+        content = MIMEText(output[0][to_addr], 'plain', 'utf-8')  
+        msg.attach(content)
+       #msg = MIMEText(output[0][to_addr], 'plain', 'utf-8')
+        msg['From'] = Header('Auto-Yifeng', 'utf-8')
+        msg['To'] = Header('User<%s>' % to_addr, 'utf-8')
+        msg['Subject'] = Header('今日校招信息 ' + output[1], 'utf-8').encode()
+        '''
+        image = MIMEImage(open(r'qr.png', 'rb').read(), _subtype='subtype')
+        image.add_header('Content-Disposition', 'attachment', filename='qr.png')
+        msg.attach(image)
+        '''
+        server.sendmail(from_addr, to_addr, msg.as_string())
+        time.sleep(1)
+    server.quit()
+
+
+def user_load():
+    arr = []
+    dic = {}
+    # enter user file path
+    with open(' ', 'r') as f:
+        for line in f:
+            linesplit = re.split(':',line)
+            username = linesplit[0]
+            arr.append(username)
+            userloc = linesplit[1]
+            dic[username] = userloc
+    return [arr,dic]
+
+
+if __name__ == '__main__':
+	#enter email address
+    from_addr = ' '
+    userload = user_load()
+    to_addr_list = userload[0]
+    user_loc_preference = userload[1]
+    send_mail(from_addr, to_addr_list)        
